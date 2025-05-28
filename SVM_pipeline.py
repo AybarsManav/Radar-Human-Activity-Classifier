@@ -57,12 +57,13 @@ class SVM_Pipeline:
             steps.append(('scaler', 'passthrough'))
         steps.append(('sfs', SFS(
             SVC(),
-            k_features=1,  # or a fixed int or list
+            k_features=1,
             forward=True,
             floating=False,
             scoring='accuracy',
-            cv=0,  # CV handled outside
-            n_jobs=-1
+            cv=0,  # CV handled outside in grid search function
+            n_jobs=-1,
+            verbose=0
         )))
         steps.append(('svm', SVC()))
         return Pipeline(steps)
@@ -155,11 +156,11 @@ if __name__ == "__main__":
     # Generate random data
     np.random.seed(random_state)
     n_samples = 120
-    n_features = 2
+    n_features = 4
 
     feature_columns = [f'feature_{i}' for i in range(n_features)]
     # Generate six clusters centered at different locations
-    centers = [(-4, -4), (-2, 2), (0, 0), (2, -2), (4, 4), (2, 2)]
+    centers = [np.full(n_features, fill_value=v) for v in [-4, -2, 0, 2, 4, 2]]
     samples_per_class = n_samples // 6
 
     X_list = []
@@ -190,7 +191,7 @@ if __name__ == "__main__":
     # Define the parameter grid for GridSearchCV
     param_grid = {
         'scaler' : [StandardScaler(), MinMaxScaler(), None],
-        'sfs__k_features': range(1, n_features + 1),  # Select from 1 to all features
+        'sfs__k_features': [n_features],  # Select all features but we will use this for report
         'svm__C': [0.1, 1, 10],
         'svm__kernel': ['linear', 'rbf'],
         'svm__gamma': ['scale', 'auto']
@@ -211,6 +212,11 @@ if __name__ == "__main__":
     # Plot learning curve to check overfitting
     svm_pipeline.plot_learning_curve(X_train, y_train)
 
+
+    """ Predict on the mesh grid to visualize the decision boundary.
+        For now only works for two features """
+    
+    """ 
     # Get best estimator from grid search
     best_svm = svm_pipeline.grid_search.best_estimator_
 
@@ -235,3 +241,4 @@ if __name__ == "__main__":
     plt.title('SVM Decision Boundary and Data Points')
     plt.legend(*scatter.legend_elements(), title="Classes")
     plt.show()
+    """
