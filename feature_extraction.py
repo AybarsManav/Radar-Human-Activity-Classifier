@@ -1,0 +1,49 @@
+import numpy as np
+import scipy 
+
+def feature_extraction(spectrogram, f, t):
+    """
+    Extract features from the input data.
+    
+    Parameters:
+    spectrogram: Radar spectrogram for feature extraction.
+    f: Frequency bins of the spectrogram.
+    t: Time bins of the spectrogram.
+    
+    Returns:
+    dict: Extracted features.
+
+    Features include:
+    - 'centroid': Mean of the spectrogram.
+    - 'variance': Variance of the spectrogram.
+    - 'period': Period of the spectrogram.
+    - 'offset': Offset of the spectrogram.
+    - 'bandwidth': Bandwidth of the spectrogram.
+    - 'torso frequency':  The average frequency of the peak signal in strength over the time bins within the window.
+    """
+    #threshold_db = -10 # set threshold to -10 dB to filter out noise
+    #spectrogram_thresh = np.where(spectrogram > threshold_db, spectrogram, 0) # Thresholding the spectrogram to remove noise
+
+    peak_power_indices = np.argmax(spectrogram, axis=0)  # Index of max power in each time bin
+    peak_freqs = f[peak_power_indices]  # Corresponding frequencies of the peak powers
+    envelope_high = np.zeros(spectrogram.shape[1])  # Initialize envelope high
+    envelope_low = np.zeros(spectrogram.shape[1])   # Initialize envelope low
+    for i in range(spectrogram.shape[1]):
+        non_zero_freq_indices = np.nonzero(spectrogram[:, i])[0]
+        envelope_high[i] = f[np.max(non_zero_freq_indices)] # highest non-zero frequency in each time bin
+        envelope_low[i] = f[np.min(non_zero_freq_indices)] # Minimum power in each time bin
+    
+    peaks, _ = scipy.signal.find_peaks(envelope_high)
+    peak_times = t[peaks]
+    period = np.mean(np.diff(peak_times))
+
+    features = {
+        'centroid': np.mean(spectrogram),
+        'normalized_std': np.std(spectrogram)/np.mean(spectrogram),
+        'period': period,
+        'offset': np.mean(envelope_high),
+        'bandwidth': np.mean(envelope_high - envelope_low),
+        'torso frequency': np.mean(peak_freqs)
+    }
+    
+    return features
