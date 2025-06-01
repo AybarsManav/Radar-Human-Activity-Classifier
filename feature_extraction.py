@@ -14,8 +14,7 @@ def feature_extraction(spectrogram, f, t):
     dict: Extracted features.
 
     Features include:
-    - 'centroid': Mean of the spectrogram.
-    - 'variance': Variance of the spectrogram, normalized by the mean.
+    - 'normalized_std': Variance of the spectrogram, normalized by the mean.
     - 'period': Period of the spectrogram, calculated as the mean of the time differences between peaks in the high frequency envelope (positive mirco Doppler).
     - 'offset': Offset of the spectrogram, calculated as the difference between the mean (across time) of the high and low frequency envelopes (highest and lowest micro Doppler frequencies across time).
     - 'bandwidth': Bandwidth of the spectrogram, calculated as the difference between the maximum and minimum micro Doppler frequencies.
@@ -37,7 +36,6 @@ def feature_extraction(spectrogram, f, t):
     peak_times = t[peaks]
 
     features = {
-        'centroid': np.mean(spectrogram),
         'normalized_std': np.std(spectrogram)/np.mean(spectrogram),
         'period': np.mean(np.diff(peak_times)),
         'offset': np.mean(envelope_high) - np.mean(envelope_low), 
