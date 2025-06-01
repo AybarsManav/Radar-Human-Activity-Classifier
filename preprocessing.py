@@ -5,6 +5,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
+import skimage as ski
 from scipy.signal import butter, lfilter, spectrogram
 
 bin_indl = 10
@@ -136,6 +137,30 @@ def get_spectrogram_MTI(Data_range_MTI, T_sweep):
 
     return np.flipud(Data_spec_MTI)
 
+def denoise_spectrogram(spectrogram, th_type='triangle'):
+    if th_type == 'otsu':
+        t = ski.filters.threshold_otsu(spectrogram)
+        return np.where(spectrogram > t, spectrogram, 0)
+    elif th_type == 'isodata':
+        t = ski.filters.threshold_isodata(spectrogram)
+        return np.where(spectrogram > t, spectrogram, 0)
+    elif th_type == 'li':
+        t = ski.filters.threshold_li(spectrogram)
+        return np.where(spectrogram > t, spectrogram, 0)
+    elif th_type == 'triangle':
+        t = ski.filters.threshold_triangle(spectrogram)
+        return np.where(spectrogram > t, spectrogram, 0)
+    elif th_type == 'mean':
+        t = ski.filters.threshold_mean(spectrogram)
+        return np.where(spectrogram > t, spectrogram, 0)
+    elif th_type == 'try_all':
+        fig, ax = ski.filters.try_all_threshold(spectrogram, verbose=True)
+        plt.show()
+        return spectrogram
+    return spectrogram
+
+
+
 def plot_range_MTI(Data_range_MTI):
     magnitude_db = 20 * np.log10(np.abs(Data_range_MTI) + 1e-12)
 
@@ -161,6 +186,12 @@ def plot_range_MTI(Data_range_MTI):
     plt.draw()
     plt.show()
 
+def get_spec_axes(T_sweep, Data_spec_MTI):
+    MD = get_mti_plot_params(T_sweep, Data_spec_MTI)
+    velocity_axis = MD['DopplerAxis'] * 3e8 / 2 / 5.8e9
+    time_axis = np.linspace(0, MD['WholeDuration'], Data_spec_MTI.shape[1])
+    return velocity_axis, time_axis
+
 def plot_spec_MTI(T_sweep, Data_spec_MTI):
     MD = get_mti_plot_params(T_sweep, Data_spec_MTI)
     velocity_axis = MD['DopplerAxis'] * 3e8 / 2 / 5.8e9
@@ -184,14 +215,14 @@ def plot_spec_MTI(T_sweep, Data_spec_MTI):
     plt.yticks(fontsize=16)
 
     # CLim equivalent
-    vmax = np.max(20 * np.log10(Data_spec_MTI + 1e-12))
-    plt.clim(vmax - 40, vmax)
+    # vmax = np.max(20 * np.log10(Data_spec_MTI + 1e-12))
+    # plt.clim(vmax - 40, vmax)
 
     plt.show()
 
 # End of helper functions
 
-def preprocess_file(file_path, plot_range_mti = False, plot_spec_mti = False):
+def preprocess_file(file_path, th_type='triangle', plot_range_mti = False, plot_spec_mti = False, plot_hist = False):
     f_c, T_sweep, NTS, bw, fs, n_chirps, complex_data = read_data(file_path)
     Data_range = data_range(complex_data, n_chirps, NTS)
     Data_range_MTI = mti_filter(Data_range)
@@ -203,13 +234,30 @@ def preprocess_file(file_path, plot_range_mti = False, plot_spec_mti = False):
     if plot_range_mti:
         plot_range_MTI(Data_range_MTI)
 
-    Data_spec = get_spectrogram(Data_range, T_sweep)
+
+    # Data_spec = get_spectrogram(Data_range, T_sweep)
     Data_spec_MTI = get_spectrogram_MTI(Data_range, T_sweep)
+
+    if plot_hist:
+        plt.hist(Data_spec_MTI.ravel(), bins=256)
+        plt.title('Original spectrogram')
+        plt.show()
+
+    # choose type of denoising, see implementation for options
+    denoised_MTI = denoise_spectrogram(Data_spec_MTI, th_type=th_type)
+
+    if plot_hist:
+        plt.hist(denoised_MTI.ravel(), bins=256)
+        plt.title('Denoised spectrogram')
+        plt.show()
+
+    velocity_axis, time_axis = get_spec_axes(T_sweep, Data_spec_MTI)
 
     if plot_spec_mti:
         plot_spec_MTI(T_sweep, Data_spec_MTI)
+        plot_spec_MTI(T_sweep, denoised_MTI)
 
-    return Data_spec, Data_spec_MTI
+    return denoised_MTI, velocity_axis, time_axis
 
 
 def get_labels(file_name):
@@ -272,7 +320,6 @@ if __name__ == '__main__':
     dataset_dir = 'datasets'
     datasets_batches = get_dataset_batches(dataset_dir)
 
-    spectrograms = []
     spectrograms_MTI = []
     labels = []
 
@@ -286,10 +333,9 @@ if __name__ == '__main__':
             t = time.time()
             dataset_file_path = os.path.join(dataset_dir, batch, file)
             person, activity, repetition = get_labels(file)
-            Data_spec, Data_spec_MTI = preprocess_file(dataset_file_path, plot_range_mti=False, plot_spec_mti=False)
+            Data_spec_MTI, velocity_axis, time_axis = preprocess_file(dataset_file_path, plot_range_mti=False, plot_spec_mti=False)
 
-            spectrograms.append(Data_spec)
-            spectrograms_MTI.append(Data_spec_MTI)
+            spectrograms_MTI.append((Data_spec_MTI, velocity_axis, time_axis))
             # Only interested in activity
             labels.append(activity)
 
@@ -297,4 +343,4 @@ if __name__ == '__main__':
 
     os.makedirs('preprocessed_data', exist_ok=True)
     with open(os.path.join('preprocessed_data', 'spectrograms.pkl'), 'wb') as f:
-        pickle.dump((spectrograms, spectrograms_MTI, np.array(labels)), f)
+        pickle.dump((spectrograms_MTI, np.array(labels)), f)
