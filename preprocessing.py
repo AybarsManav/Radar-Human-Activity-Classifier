@@ -159,9 +159,38 @@ def denoise_spectrogram(spectrogram, th_type='triangle'):
         return spectrogram
     return spectrogram
 
+def denoise_spectrogram_per_timebin_basis(spectrogram):
+    """
+    Using threshold_triangle on each time bin of the spectrogram,
+    computes a threshold value for each time bin. Using the threshold
+    values, find the median out of all threshold values and use it.
+    To make sure, each time bin has at least one value above the threshold,
+    we use triangle thresholding iteratively by increasing the number of bins
+    until the median is lower than that time bin's maximum value.
+    """
+    min_max_timebin_value = np.min(np.max(spectrogram, axis=0))
+    median_th = np.inf
+    num_bins = 256  # Initial number of bins for triangle thresholding
+    while median_th > min_max_timebin_value and num_bins <= 2**16 :
+        ts = np.zeros((spectrogram.shape[1], 1))
+        for col in range(spectrogram.shape[1]):
+            ts[col, 0] = ski.filters.threshold_triangle(spectrogram[:, col], num_bins)
+        median_th = np.median(ts) 
+        num_bins *= 2 # Double the number of bins for the next iteration
+
+    if (num_bins > 2**16):
+        print(f"Warning: Number of bins exceeded 2^16, using min_max_timebin_value for triangle thresholding.")
+        # Choose the min_max_timebin_value as the threshold
+        median_th = min_max_timebin_value - 1e-12
+    
+    # Apply the threshold to the spectrogram
+    spectrogram = np.where(spectrogram > median_th, spectrogram, 0)
+
+    return spectrogram
 
 
 def plot_range_MTI(Data_range_MTI):
+
     magnitude_db = 20 * np.log10(np.abs(Data_range_MTI) + 1e-12)
 
     # Plot
@@ -244,7 +273,8 @@ def preprocess_file(file_path, th_type='triangle', plot_range_mti = False, plot_
         plt.show()
 
     # choose type of denoising, see implementation for options
-    denoised_MTI = denoise_spectrogram(Data_spec_MTI, th_type=th_type)
+    # denoised_MTI = denoise_spectrogram(Data_spec_MTI, th_type=th_type)
+    denoised_MTI = Data_spec_MTI.copy() # Handle denoising outside
 
     if plot_hist:
         plt.hist(denoised_MTI.ravel(), bins=256)
