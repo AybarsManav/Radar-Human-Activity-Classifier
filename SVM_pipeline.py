@@ -2,40 +2,38 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.svm import SVC
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import LeaveOneGroupOut, GridSearchCV, train_test_split
+from sklearn.model_selection import KFold, GridSearchCV, train_test_split
 from sklearn.metrics import classification_report
 from sklearn.model_selection import learning_curve
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import numpy as np
 import matplotlib.pyplot as plt
 from mlxtend.feature_selection import SequentialFeatureSelector as SFS
+import joblib
 
 class SVM_Pipeline:
     
-    def __init__(self):
+    def __init__(self, n_splits=5, random_state=42):
         self.svm = SVC()
-        self.leave_one_group_out = LeaveOneGroupOut()
+        self.cv = KFold(n_splits= n_splits, shuffle=True, random_state=random_state)
 
 
     def init_and_split_data(self, dataframe, split_ratio=0.2, random_state=42):
         """
         Initialize and split the data into training and testing sets.
         """
-        X = dataframe.drop(columns=['subject_id', 'activity'])
-        y = dataframe['activity']
-        groups = dataframe['subject_id']
+        X = dataframe.drop(columns=['label'])
+        y = dataframe['label']
     
         # Split the data
         self.X_train, self.X_test, \
         self.y_train, self.y_test, \
-        self.groups_train, self.groups_test = train_test_split(
-            X, y, groups, test_size=split_ratio,
-            random_state=random_state, stratify=y
-        )
+        = train_test_split(
+            X, y, test_size=split_ratio,
+            random_state=random_state, stratify=y)
         
         return self.X_train, self.X_test, \
-        self.y_train, self.y_test, \
-        self.groups_train, self.groups_test
+        self.y_train, self.y_test
     
     def set_param_grid(self, param_grid):
         """
@@ -48,8 +46,28 @@ class SVM_Pipeline:
         Set the scaler for the pipeline.
         """
         self.standard_scaler = scaler
+        self.best_model = None
 
-    def build_pipeline(self, scaler=None):
+    def save_best_model(self, filepath):
+        """
+        Save the best model from grid search to a file.
+        """
+        if hasattr(self, 'grid_search'):
+            self.best_model = self.grid_search.best_estimator_
+            joblib.dump(self.best_model, filepath)
+        else:
+            raise ValueError("Grid search has not been run yet.")
+    
+    def load_best_model(self, filepath):
+        """
+        Load the best model from a file.
+        """
+        self.best_model = joblib.load(filepath)
+        self.grid_search.best_estimator_ = self.best_model
+        return self.best_model
+
+
+    def build_pipeline(self, scaler=None, scoring = 'accuracy'):
         steps = []
         if scaler is not None:
             steps.append(('scaler', scaler))
@@ -60,7 +78,7 @@ class SVM_Pipeline:
             k_features=1,
             forward=True,
             floating=False,
-            scoring='accuracy',
+            scoring=scoring,
             cv=0,  # CV handled outside in grid search function
             n_jobs=-1,
             verbose=0
@@ -68,17 +86,17 @@ class SVM_Pipeline:
         steps.append(('svm', SVC()))
         return Pipeline(steps)
 
-    def run_grid_search(self, X_train, y_train, groups, scoring ='accuracy'):
+    def run_grid_search(self, X_train, y_train, scoring ='accuracy'):
         """
         Run GridSearchCV to find the best hyperparameters.
         """
         pipeline = self.build_pipeline()
         self.grid_search = GridSearchCV(
-            pipeline, self.param_grid, cv=self.leave_one_group_out.split(X_train, y_train, groups=groups),
+            pipeline, self.param_grid, cv=self.cv,
             scoring=scoring, n_jobs=-1
         )
         
-        self.grid_search.fit(X_train, y_train, groups=groups)
+        self.grid_search.fit(X_train, y_train) #,groups=groups) needed if we were to use leave-one-group-out strategy
         
         return self.grid_search
     
@@ -101,12 +119,40 @@ class SVM_Pipeline:
             y_pred = self.grid_search.predict(X_test)
             report = classification_report(y_test, y_pred, output_dict=True)
             print("Best params:", self.grid_search.best_params_)
-            # print("Classification Report:")
-            # print(report)
+            # Show confusion matrix
             cm = confusion_matrix(y_test, y_pred)
             disp = ConfusionMatrixDisplay(confusion_matrix=cm)
             disp.plot(cmap='Blues')
             plt.title("Confusion Matrix")
+            plt.show()
+            # Visualize classification report
+            report_df = pd.DataFrame(report).transpose()
+            metrics = ['precision', 'recall', 'f1-score']
+            # Plot per-class metrics
+            ax = report_df.iloc[:-3, :-1][metrics].plot(kind='bar', figsize=(10, 5))
+
+            # Add macro and weighted averages as horizontal lines
+            for metric in metrics:
+                macro_avg = report_df.loc['macro avg', metric]
+                weighted_avg = report_df.loc['weighted avg', metric]
+                ax.axhline(macro_avg, linestyle='--', color='blue', alpha=0.7, label=f'Macro avg {metric}')
+                ax.axhline(weighted_avg, linestyle=':', color='red', alpha=0.7, label=f'Weighted avg {metric}')
+
+            # Annotate each bar with support
+            # supports = report_df.iloc[:-3]['support']
+            # for idx, support in enumerate(supports):
+            #     for bar in ax.containers:
+            #         height = bar[idx].get_height()
+            #         ax.annotate(f'n={int(support)}', 
+            #                     (bar[idx].get_x() + bar[idx].get_width() / 2, height),
+            #                     ha='center', va='bottom', fontsize=8, rotation=90)
+
+            plt.title("Precision, Recall, F1-score per Class (with Averages)")
+            plt.ylabel("Score")
+            plt.ylim(0, 1)
+            plt.xlabel("Classes")
+            plt.xticks(rotation=90)
+            plt.legend()
             plt.show()
             return report
         else:
