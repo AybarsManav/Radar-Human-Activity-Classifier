@@ -1,5 +1,9 @@
 import numpy as np
 import scipy 
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+
 
 def feature_extraction(spectrogram, f, t):
     """
@@ -46,3 +50,42 @@ def feature_extraction(spectrogram, f, t):
     }
     
     return features
+
+def analyze_mean_and_std_of_features(features_df):
+    """
+    Analyze the mean and standard deviation of the extracted features after standardizing features.
+    Parameters:
+    features_df: DataFrame containing the extracted features with a 'label' column.
+    """
+
+    # Standardize features (excluding the label column)
+    scaler = StandardScaler()
+    features_only = features_df.drop(columns=['label'])
+    features_std = scaler.fit_transform(features_only)
+    features_std_df = pd.DataFrame(features_std, columns=features_only.columns)
+    features_std_df['label'] = features_df['label'].values
+
+    # Compute means and variances per label
+    mean_per_label = features_std_df.groupby('label').mean()
+    var_per_label = features_std_df.groupby('label').var()
+
+    # Plot means with error bars (standard deviation)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    labels = mean_per_label.index
+    x = range(len(labels))
+    width = 0.12
+
+    for i, feature in enumerate(mean_per_label.columns):
+        if feature == 'label':
+            continue
+        means = mean_per_label[feature]
+        stds = var_per_label[feature].apply(np.sqrt)
+        ax.bar([xi + i*width for xi in x], means, width=width, yerr=stds, label=feature, capsize=4)
+
+    ax.set_xticks([xi + width*2.5 for xi in x])
+    ax.set_xticklabels(labels)
+    ax.set_xlabel('Class Label')
+    ax.set_ylabel('Standardized Feature Mean')
+    ax.set_title('Standardized Feature Means and Std Dev per Class')
+    ax.legend()
+    plt.show()

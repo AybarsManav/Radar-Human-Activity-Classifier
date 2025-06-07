@@ -4,4 +4,3 @@
 datasets/
 preprocessed_data/
 *.dat
-*.pkl
