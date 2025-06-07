@@ -137,12 +137,14 @@ class SVM_Pipeline:
             #                     (bar[idx].get_x() + bar[idx].get_width() / 2, height),
             #                     ha='center', va='bottom', fontsize=8, rotation=90)
 
-            plt.title("Precision, Recall, F1-score per Class (with Averages)")
-            plt.ylabel("Score")
+            plt.title("Precision, Recall, F1-score per Class (with Averages)", fontsize=22)
+            plt.ylabel("Score", fontsize=20)
+            plt.xlabel("Classes", fontsize=20)
             plt.ylim(0, 1)
-            plt.xlabel("Classes")
-            plt.xticks(rotation=90)
-            plt.legend()
+            plt.xticks(rotation=90, fontsize=20)
+            plt.yticks(fontsize=20)
+            plt.legend(fontsize=12)
+            plt.tight_layout()
             plt.show()
             return report
         else:
